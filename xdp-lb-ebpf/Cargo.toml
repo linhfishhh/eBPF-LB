@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 xdp-lb-common = { path = "../xdp-lb-common" }
-
 aya-ebpf = { workspace = true }
 aya-log-ebpf = { workspace = true }
+network-types = "0.0.7"
 
 [build-dependencies]
 which = { workspace = true }
