@@ -3,7 +3,12 @@
 
 use core::mem;
 
-use aya_ebpf::{bindings::xdp_action, macros::xdp, programs::XdpContext};
+use aya_ebpf::{
+    bindings::xdp_action,
+    macros::{map, xdp},
+    maps::HashMap,
+    programs::XdpContext,
+};
 use aya_log_ebpf::info;
 use network_types::{
     eth::{EthHdr, EtherType},
@@ -12,12 +17,19 @@ use network_types::{
     udp::UdpHdr,
 };
 
+#[map]
+static BLOCKLIST: HashMap<u32, u32> = HashMap::<u32, u32>::with_max_entries(1024, 0);
+
 #[xdp]
 pub fn xdp_lb(ctx: XdpContext) -> u32 {
     match try_xdp_lb(ctx) {
         Ok(ret) => ret,
         Err(_) => xdp_action::XDP_ABORTED,
     }
+}
+
+fn block_ip(address: u32) -> bool {
+    unsafe { BLOCKLIST.get(&address).is_some() }
 }
 
 fn try_xdp_lb(ctx: XdpContext) -> Result<u32, ()> {
@@ -44,8 +56,17 @@ fn try_xdp_lb(ctx: XdpContext) -> Result<u32, ()> {
         _ => return Err(()),
     };
 
-    info!(&ctx, "SRC IP: {:i}, SRC PORT: {}", source_addr, source_port);
-    Ok(xdp_action::XDP_PASS)
+    let action = if block_ip(source_addr) {
+        xdp_action::XDP_DROP
+    } else {
+        xdp_action::XDP_PASS
+    };
+
+    info!(
+        &ctx,
+        "SRC IP: {:i}, SRC PORT: {}, action: {}", source_addr, source_port, action
+    );
+    Ok(action)
 }
 
 #[inline(always)] // (1)
